@@ -1,0 +1,840 @@
+---
+output:
+  html_document: default
+  pdf_document: default
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Overview
+
+Created by An Tran for use in **ADS 502 - Applied Data Mining**. Dataset originates from [Kaggle competition](https://www.kaggle.com/c/house-prices-advanced-regression-techniques/data) and is reduced in size as a simplified and introductory module to kickstart the course. Functions and syntax are adapted from the book [R for Data Science](https://www.amazon.com/Data-Science-Transform-Visualize-Model/dp/1491910399) by Hadley Wickham and analysis from Erik Bruin's notebook in the same [competition](https://www.kaggle.com/erikbruin/house-prices-lasso-xgboost-and-a-detailed-eda).
+
+Our dataset requires you to estimate the value of a house based on its features. This playground dataset proves that there are many factors which influence the price negotiations than just the number of bedrooms or a white-picket fence. With 31 explanatory variables describing (almost) every aspect of residential homes in Ames, Iowa, this dataset challenges you to predict the final price of each home. We start the notebook by introducing some basic syntax and function in R, then shift our focus to getting a good understanding of the dataset by Exploratory Data Analysis (EDA) and visualizations. Finally, we develop a simple linear regression model that predicts the price of a house.
+
+# 1. Basic R Syntax
+
+To execute a command in R, click on the Run button, or press "Ctrl + Enter" on the current command
+
+```{r, message=FALSE, warning=FALSE}
+# R can be used as a calculator
+2 + 2
+sqrt(9)
+2^3
+log10(100)
+
+# Creating objects: 
+# <- : assignment in R. Shortcut: "Alt + -" on Windows or "Option + -" on Mac.
+a <- 10 * 6
+a
+```
+
+There are 4 main data types in R: numeric, character, factor, and logical. 
+
+```{r, message=FALSE, warning=FALSE}
+# Data classes
+# Numeric (includes integer, decimal)
+num <- 12.6
+num
+
+# Character (includes characters and strings)
+char <- "Male"
+char
+
+# Factor (ordinal/categorical data)
+gender <- as.factor(char)
+gender
+
+# Logical ()
+TRUE 
+FALSE
+T # abbreviation also works for boolean object
+F
+```
+
+## Data Structures
+
+There are 3 most important data structures in R: vector, matrix, and dataframe. 
+
+* **Vector**: a series of values of the same data class.
+* **Matrix**: a 2-d version of vector. Instead of only having a single row/list of data, we have rows and columns of data of the same data class.
+* **Dataframe**: the most important data structure for data science. Think of dataframe as loads of vectors pasted together as columns. Columns in a dataframe can be of different data class, but values within the same column must be the same data class.
+
+```{r, message=FALSE, warning=FALSE}
+# c(): the function to create a vector of values in R ("c" stands for "combine")
+c(1:10)
+
+# Creating a vector of character data
+c("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
+
+# Creating a vector of logical values
+c(FALSE, TRUE, TRUE, FALSE, FALSE)
+c(F, T, T, F, F) # you can abbreviate logical values as well
+```
+
+## Indexing in R
+
+```{r, message=FALSE, warning=FALSE}
+days <- c("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
+days
+
+# What does the following command return?
+days[1]
+
+# Select all elements except the first
+# In R, the hyphen symbol "-" means except
+days[-1]
+
+# This command returns NA (Not Applicable) because our vector only has 7 elements
+days[10]
+
+# Return first, third, and fifth elements
+days[c(1, 3, 5)]
+
+# Return second to fifth elements
+days[2:5]
+```
+
+## Functions in R
+
+A function is basically how R does things. Without functions, R is just a pretty way of storing numbers and values. Basically, function is a box where you feed it some inputs, it does something to the provided inputs and give you an output.Functions in R are recognized as: **function_name()**
+
+```{r, message=FALSE, warning=FALSE}
+myValues <- c(1:100)
+
+mean(myValues) # mean of the vector
+min(myValues) # minimum of the vector
+max(myValues) # maximum of the vector
+sum(myValues) # sum of the vector
+sd(myValues) # standard deviation of the vector
+class(myValues) # return data class of the vector
+length(myValues) # the length of the vector
+
+# Let's utilize "rnorm" function to create a vector of normally distributed
+# data with mean = 20 and standard deviation = 5
+set.seed(10) # set a specific seed so our results are the same
+sample_vals <- rnorm(n = 100, mean = 20, sd = 5)
+
+# Let's plot this distribution using R built-in function "hist"
+# ?hist: information regarding how to use a specific function in R
+hist(sample_vals) 
+
+
+# We can add more arguments to this function to make the plot look better
+hist(sample_vals,
+     col = 'lightblue',
+     xlab = 'Values',
+     ylab = 'Frequency',
+     main = 'Histogram of Simulated Data',
+     border = 'black')
+
+# Scatter plot using "plot" function by default
+plot(sample_vals,
+     main = 'Scatter Plot of Simulated Data',
+     pch = 20,
+     xlab = 'Index',
+     ylab = 'Value')
+```
+
+# 2. Loading and Exploring Data
+
+Now that we get some of the basics of R out of the way, let's get right into working with our dataset, which is to analyze and predict the price of a house based on its features. Make sure the dataset is in the same path as our R script. If you save the data somewhere else, you need to pass in the full path to where you saved the dataset, e.g. *dataset <- read.csv('C:/Downloads/dataset.csv')*
+
+## Loading libraries required and reading the data into R
+
+```{r, message=FALSE, warning=FALSE}
+library(knitr)
+library(ggplot2)
+library(plyr)
+library(dplyr)
+library(corrplot)
+library(caret)
+library(gridExtra)
+library(scales)
+library(Rmisc)
+library(ggrepel)
+library(psych)
+```
+
+Below, we are reading the csv's as dataframes into R.
+
+```{r}
+df <- read.csv("house.csv", stringsAsFactors = F)
+```
+
+## Data size and structure
+
+The dataset consist of character and numeric variables. We don't want R to load in character variables as factor data (which it does by default), we need to set *stringsAsFactors = F* when we bring the data into our environment. Most of the character variables are actually (ordinal) factors, but most of them require some cleaning and preparation first; therefore, we need to read them into R as character strings. In total, there are 31 columns/variables, of which the last one is the outcome variable (SalePrice). Below, we are displaying only a glimpse of the variables. All of them are discussed in more detail throughout the document.
+
+```{r}
+dim(df)
+str(df[, c(1:10, 31)]) #display first 10 variables and the outcome variable
+```
+
+# 3. Exploring some of the most important variables
+
+## The outcome variable: SalePrice
+
+As you can see, the sale prices are right skewed. This was expected as few people can afford very expensive houses. Keep this in mind, and take measures before modeling.
+
+```{r, message=FALSE}
+ggplot(data=df[!is.na(df$SalePrice),], aes(x=SalePrice)) +
+        geom_histogram(fill="blue", binwidth = 10000) +
+        scale_x_continuous(breaks= seq(0, 800000, by=100000), labels = comma)
+summary(df$SalePrice)
+```
+
+## The most important numeric predictors
+
+The character variables need some work before we can use them. To get a feel for the dataset, let's first see which numeric variables have a high correlation with the SalePrice.
+
+### Correlations with SalePrice
+
+Altogether, there are 10 numeric variables with a correlation of at least 0.5 with SalePrice. All those correlations are positive.
+
+```{r, message=FALSE, warning=FALSE}
+numericVars <- which(sapply(df, is.numeric)) # index vector numeric variables
+numericVarNames <- names(numericVars) # saving names vector for use later on
+cat('There are', length(numericVars), 'numeric variables')
+
+all_numVar <- df[, numericVars]
+cor_numVar <- cor(all_numVar, use="pairwise.complete.obs") #c orrelations of all numeric variables
+
+# sort on decreasing correlations with SalePrice
+cor_sorted <- as.matrix(sort(cor_numVar[,'SalePrice'], decreasing = TRUE))
+
+# select only high correlations
+CorHigh <- names(which(apply(cor_sorted, 1, function(x) abs(x)>0.5)))
+cor_numVar <- cor_numVar[CorHigh, CorHigh]
+
+corrplot.mixed(cor_numVar, tl.col="black", tl.pos = "lt")
+```
+
+In the remainder of this section, we will visualize the relation between SalePrice and the two predictors with the highest correlation with SalePrice; Overall Quality and the 'Above Grade' Living Area (this is the proportion of the house that is not in a basement).
+
+It also becomes clear the multi-collinearity is an issue. For example: the correlation between GarageCars and GarageArea is very high (0.89), and both have similar (high) correlations with SalePrice. The other variables with a correlation higher than 0.5 with SalePrice are:
+
+-TotalBsmtSF: Total square feet of basement area
+
+-1stFlrSF: First Floor square feet
+
+-FullBath: Full bathrooms above grade
+
+-TotRmsAbvGrd: Total rooms above grade (does not include bathrooms)
+
+-YearBuilt: Original construction date
+
+-YearRemodAdd: Remodel date (same as construction date if no remodeling or additions)
+
+
+### Overall Quality
+
+Overall Quality has the highest correlation with SalePrice among the numeric variables (0.79). It rates the overall material and finish of the house on a scale from 1 (very poor) to 10 (very excellent).
+
+```{r, message=FALSE, warning=FALSE}
+ggplot(data=df[!is.na(df$SalePrice),], aes(x=factor(OverallQual), y=SalePrice))+
+        geom_boxplot(col='blue') + labs(x='Overall Quality') +
+        scale_y_continuous(breaks= seq(0, 800000, by=100000), labels = comma)
+```
+
+The positive correlation is certainly there indeed, and seems to be a slightly upward curve. Regarding outliers, I do not see any extreme values. If there is a candidate to take out as an outlier later on, it seems to be the expensive house with grade 4.
+
+### Above Grade (Ground) Living Area (square feet)
+
+The numeric variable with the second highest correlation with SalesPrice is the Above Grade Living Area. This make a lot of sense; big houses are generally more expensive.
+
+```{r, message=FALSE, warning=FALSE}
+ggplot(data=df[!is.na(df$SalePrice),], aes(x=GrLivArea, y=SalePrice))+
+        geom_point(col='blue') + geom_smooth(method = "lm", se=FALSE, color="black", aes(group=1)) +
+        scale_y_continuous(breaks= seq(0, 800000, by=100000), labels = comma) +
+        geom_text_repel(aes(label = ifelse(GrLivArea[!is.na(SalePrice)]>4500, rownames(df), '')))
+        
+```
+
+Especially the two houses with really big living areas and low SalePrices seem outliers (houses 524 and 1299, see labels in graph). We will not take them out yet, as taking outliers can be dangerous. For instance, a low score on the Overall Quality could explain a low price. However, as you can see below, these two houses actually also score maximum points on Overall Quality. Therefore, we will keep houses 1299 and 524 in mind as prime candidates to take out as outliers.
+
+```{r, message=FALSE, warning=FALSE}
+df[c(524, 1299), c('SalePrice', 'GrLivArea', 'OverallQual')]
+```
+
+# 4. Missing data, label encoding, and factorizing variables
+
+## Completeness of the data
+
+First of all, let's see which variables contain missing values.
+
+```{r, message=FALSE, warning=FALSE}
+NAcol <- which(colSums(is.na(df)) > 0)
+sort(colSums(sapply(df[NAcol], is.na)), decreasing = TRUE)
+cat('There are', length(NAcol), 'columns with missing values')
+```
+
+## Imputing missing data {.tabset}
+
+In this section, we are going to fix the 5 set of predictors that contains missing values. We will go through them working our way down from most NAs until we have fixed them all.
+
+Besides making sure that the NAs are taken care off, let's also convert character variables into ordinal integers if there is clear ordinality, or into factors if levels are categories without ordinality. We will convert these factors into numeric later on by using one-hot encoding (using the model.matrix function).
+
+First of all, we can label encode variables that are ordinal. As there a multiple variables that use the same quality levels, we are going to create a vector that we can reuse later on.
+
+```{r}
+Qualities <- c('None' = 0, 'Po' = 1, 'Fa' = 2, 'TA' = 3, 'Gd' = 4, 'Ex' = 5)
+```
+
+### Miscellaneous Feature
+
+**Miscellaneous feature not covered in other categories**
+
+Within Miscellaneous Feature, there are 1406 NAs. As the values are not ordinal, we will convert MiscFeature into a factor. Values:	
+
+Elev - Elevator
+
+Gar2 - 2nd Garage (if not described in garage section)
+
+Othr - Other
+
+Shed - Shed (over 100 SF)
+
+TenC - Tennis Court
+
+NA - None
+
+
+```{r, message=FALSE, warning=FALSE}
+df$MiscFeature[is.na(df$MiscFeature)] <- 'None'
+df$MiscFeature <- as.factor(df$MiscFeature)
+
+ggplot(df[!is.na(df$SalePrice),], aes(x=MiscFeature, y=SalePrice)) +
+        geom_bar(stat='summary', fun = "median", fill='blue') +
+        scale_y_continuous(breaks= seq(0, 800000, by=100000), labels = comma) +
+        geom_label(stat = "count", aes(label = ..count.., y = ..count..))
+
+table(df$MiscFeature)
+```
+
+When looking at the frequencies, the variable seems irrelevant. Having a shed probably means 'no Garage', which would explain the lower sales price for Shed. Also, while it makes a lot of sense that a house with a Tennis court is expensive, there is only one house with a tennis court in the training set.
+
+**Select to other tabs in "Imputing missing data" section for the processing of other variables**
+
+### Fireplace variables
+
+**Fireplace quality, and Number of fireplaces**
+
+Within Fireplace Quality, there are 690 NAs. Number of fireplaces is complete.
+
+**Fireplace quality**
+
+The number of NAs in FireplaceQu matches the number of houses with 0 fireplaces. This means that we can safely replace the NAs in FireplaceQu with 'no fireplace'. The values are ordinal, and we can use the Qualities vector that we have already created earlier. Values:
+
+Ex - Excellent
+
+Gd - Good
+
+TA - Average
+
+Fa - Fair
+
+Po - Poor
+
+NA - No Fireplace
+
+
+```{r, message=FALSE, warning=FALSE}
+df$FireplaceQu[is.na(df$FireplaceQu)] <- 'None'
+df$FireplaceQu<-as.integer(revalue(df$FireplaceQu, Qualities))
+table(df$FireplaceQu)
+```
+
+**Number of fireplaces**
+
+Fireplaces is an integer variable, and there are no missing values.
+```{r, message=FALSE, warning=FALSE}
+table(df$Fireplaces)
+sum(table(df$Fireplaces))
+```
+**Select to other tabs in "Imputing missing data" section for the processing of other variables**
+
+### Lot variables
+
+There are 2 variables related to Lot. 1 with missing values (LotFrontage) and 1 complete (LotArea). Let's impute the missing values in LotFrontage by the median of the dataset.
+
+```{r, message=FALSE, warning=FALSE}
+df$LotFrontage[is.na(df$LotFrontage)] <- median(df$LotFrontage, na.rm=TRUE)
+```
+
+**Select to other tabs in "Imputing missing data" section for the processing of other variables**
+
+### Garage variables
+
+**Altogether, there are 4 variables related to garages**
+
+GarageCars, GarageArea, GarageYrBlt,GarageQual.
+
+First of all, let's replace all missing values in **GarageYrBlt: Year garage was built** values with the values in YearBuilt (this is similar to YearRemodAdd, which also defaults to YearBuilt if no remodeling or additions).
+
+```{r}
+df$GarageYrBlt[is.na(df$GarageYrBlt)] <- df$YearBuilt[is.na(df$GarageYrBlt)]
+```
+
+**GarageQual: Garage quality**
+
+Another variable than can be made ordinal with the Qualities vector.
+
+Ex - Excellent
+
+Gd - Good
+
+TA - Typical/Average
+
+Fa - Fair
+
+Po - Poor
+
+NA - No Garage
+
+       
+```{r, message=FALSE, warning=FALSE}
+df$GarageQual[is.na(df$GarageQual)] <- 'None'
+df$GarageQual<-as.integer(revalue(df$GarageQual, Qualities))
+table(df$GarageQual)
+```
+
+**Select to other tabs in "Imputing missing data" section for the processing of other variables**
+
+### Kitchen variables
+
+**Kitchen quality and number of Kitchens above grade**
+
+Kitchen quality has 1 NA. Number of Kitchens is complete.
+
+**Kitchen quality**
+
+1 NA. Can be made ordinal with the qualities vector.
+
+Ex - Excellent
+
+Gd - Good
+
+TA - Typical/Average
+
+Fa - Fair
+
+Po - Poor
+
+ 
+```{r, message=FALSE, warning=FALSE}
+df$KitchenQual[is.na(df$KitchenQual)] <- 'TA' #replace with most common value
+df$KitchenQual<-as.integer(revalue(df$KitchenQual, Qualities))
+table(df$KitchenQual)
+sum(table(df$KitchenQual))
+```
+
+**Select to other tabs in "Imputing missing data" section for the processing of other variables**
+
+## Label encoding/factorizing the remaining character variables {.tabset}
+
+At this point, we have made sure that all variables with NAs are taken care of. However, we still need to also take care of the remaining character variables that without missing values. Similar to the previous section, let's create Tabs for groups of variables.
+
+```{r}
+Charcol <- names(df[,sapply(df, is.character)])
+Charcol
+cat('There are', length(Charcol), 'remaining columns with character values')
+```
+
+### Foundation
+
+**Foundation: Type of foundation**
+
+BrkTil - Brick & Tile
+
+CBlock - Cinder Block
+
+PConc - Poured Contrete	
+
+Slab - Slab
+
+Stone - Stone
+
+Wood - Wood
+
+
+```{r, message=FALSE, warning=FALSE}
+# No ordinality, so converting into factors
+df$Foundation <- as.factor(df$Foundation)
+table(df$Foundation)
+sum(table(df$Foundation))
+```
+
+**Select other tabs in "Label encoding" section for the processing of other variables**
+
+### Heating and airco
+
+There are 2 heating variables, and one that indicates Airco Yes/No.
+
+**Heating: Type of heating**
+
+Floor - Floor Furnace
+
+GasA - Gas forced warm air furnace
+
+GasW - Gas hot water or steam heat
+
+Grav - Gravity furnace
+
+OthW - Hot water or steam heat other than gas
+
+Wall - Wall furnace
+       
+```{r, message=FALSE, warning=FALSE}
+#No ordinality, so converting into factors
+df$Heating <- as.factor(df$Heating)
+table(df$Heating)
+sum(table(df$Heating))
+```
+
+**HeatingQC: Heating quality and condition**
+
+Ex - Excellent
+
+Gd - Good
+
+TA - Average/Typical
+
+Fa - Fair
+
+Po - Poor
+
+       
+```{r, message=FALSE, warning=FALSE}
+#making the variable ordinal using the Qualities vector
+df$HeatingQC<-as.integer(revalue(df$HeatingQC, Qualities))
+table(df$HeatingQC)
+sum(table(df$HeatingQC))
+```
+
+**CentralAir: Central air conditioning**
+
+N - No
+
+Y - Yes
+
+```{r, message=FALSE, warning=FALSE}
+df$CentralAir<-as.integer(revalue(df$CentralAir, c('N'=0, 'Y'=1)))
+table(df$CentralAir)
+sum(table(df$CentralAir))
+```
+
+**Select other tabs in "Label encoding" section for the processing of other variables**
+
+### Dwelling
+
+1 variable that specify the type and style of dwelling.
+
+**BldgType: Type of dwelling**
+		
+1Fam - Single-family Detached
+
+2FmCon - Two-family Conversion; originally built as one-family dwelling
+
+Duplx - Duplex
+
+TwnhsE - Townhouse End Unit
+
+TwnhsI - Townhouse Inside Unit
+
+This seems ordinal (single family detached=best). Let's check it with visualization.
+
+```{r, message=FALSE, warning=FALSE}
+ggplot(df[!is.na(df$SalePrice),], aes(x=as.factor(BldgType), y=SalePrice)) +
+        geom_bar(stat='summary', fun.y = "median", fill='blue')+
+        scale_y_continuous(breaks= seq(0, 800000, by=100000), labels = comma) +
+        geom_label(stat = "count", aes(label = ..count.., y = ..count..))
+```
+
+However, the visualization does not show ordinality.
+
+```{r, message=FALSE, warning=FALSE}
+#No ordinality, so converting into factors
+df$BldgType <- as.factor(df$BldgType)
+table(df$BldgType)
+sum(table(df$BldgType))
+```
+
+**Select other tabs in "Label encoding" section for the processing of other variables**
+
+## Changing some numeric variables into factors
+
+At this point, all variables are complete (No NAs), and all character variables are converted into either numeric labels of into factors. However, there are 3 variables that are recorded numeric but should actually be categorical.
+
+### Year and Month Sold
+
+While oridinality within YearBuilt (or remodeled) makes sense (old houses are worth less), we are talking about only 5 years of sales. These years also include an economic crisis. For instance: Sale Prices in 2009 (after the collapse) are very likely to be much lower than in 2007. We will convert YrSold into a factor before modeling, but as we need the numeric version of YrSold to create an Age variable, we are not doing that yet.
+
+Month Sold is also an Integer variable. However, December is not "better" than January. Therefore, we will convert MoSold values back into factors.
+
+```{r, message=FALSE, warning=FALSE}
+str(df$YrSold)
+str(df$MoSold)
+df$MoSold <- as.factor(df$MoSold)
+```
+
+Although possible a bit less steep than expected, the effects of the Banking crises that took place at the end of 2007 can be seen indeed. After the highest median prices in 2007, the prices gradually decreased. However, seasonality seems to play a bigger role, as you can see below.
+
+```{r, message=FALSE, warning=FALSE}
+ys <- ggplot(df[!is.na(df$SalePrice),], aes(x=as.factor(YrSold), y=SalePrice)) +
+        geom_bar(stat='summary', fun = "median", fill='blue')+
+        scale_y_continuous(breaks= seq(0, 800000, by=25000), labels = comma) +
+        geom_label(stat = "count", aes(label = ..count.., y = ..count..)) +
+        coord_cartesian(ylim = c(0, 200000)) +
+        geom_hline(yintercept=163000, linetype="dashed", color = "red") #dashed line is median SalePrice
+
+ms <- ggplot(df[!is.na(df$SalePrice),], aes(x=MoSold, y=SalePrice)) +
+        geom_bar(stat='summary', fun = "median", fill='blue')+
+        scale_y_continuous(breaks= seq(0, 800000, by=25000), labels = comma) +
+        geom_label(stat = "count", aes(label = ..count.., y = ..count..)) +
+        coord_cartesian(ylim = c(0, 200000)) +
+        geom_hline(yintercept=163000, linetype="dashed", color = "red") #dashed line is median SalePrice
+
+grid.arrange(ys, ms, widths=c(1,2))
+```
+
+# 5. Visualization of important variables
+
+We have now finally reached the point where all character variables have been converted into categorical factors or have been label encoded into numbers. In addition, 3 numeric variables have been converted into factors. 
+
+## Correlations, again!
+
+Below we are checking the correlations again after we did some data cleaning and processing.
+
+```{r, out.width="100%", message=FALSE, warning=FALSE}
+numericVars <- which(sapply(df, is.numeric)) #index vector numeric variables
+factorVars <- which(sapply(df, is.factor)) #index vector factor variables
+cat('There are', length(numericVars), 'numeric variables, and', length(factorVars), 'categoric variables')
+
+all_numVar <- df[, numericVars]
+cor_numVar <- cor(all_numVar, use="pairwise.complete.obs") #correlations of all numeric variables
+
+#sort on decreasing correlations with SalePrice
+cor_sorted <- as.matrix(sort(cor_numVar[,'SalePrice'], decreasing = TRUE))
+
+#select only high corelations
+CorHigh <- names(which(apply(cor_sorted, 1, function(x) abs(x)>0.5)))
+cor_numVar <- cor_numVar[CorHigh, CorHigh]
+
+corrplot.mixed(cor_numVar, tl.col="black", tl.pos = "lt", tl.cex = 0.7,cl.cex = .7, number.cex=.7)
+```
+
+### Above Ground Living Area, and other surface related variables (in square feet)
+
+As we have already visualized the relation between the Above Ground Living Area and SalePrice in our initial explorations, we will now just display the distribution itself. As there are more 'square feet' surface measurements in the Top 20, we are taking the opportunity to bundle them in this section. Note: GarageArea is taken care of in the Garage variables section.
+
+We are also adding 'Total Rooms Above Ground' (TotRmsAbvGrd) as this variable is highly correlated with the Above Ground Living Area(0.81).
+
+```{r, warning=FALSE, message=FALSE, out.width="100%"}
+s1 <- ggplot(data=df, aes(x=GrLivArea)) +
+        geom_density() + labs(x='Square feet living area')
+s2 <- ggplot(data=df, aes(x=as.factor(TotRmsAbvGrd))) +
+        geom_histogram(stat='count') + labs(x='Rooms above Ground')
+s3 <- ggplot(data=df, aes(x=X1stFlrSF)) +
+        geom_density() + labs(x='Square feet first floor')
+s4 <- ggplot(data=df, aes(x=X2ndFlrSF)) +
+        geom_density() + labs(x='Square feet second floor')
+s5 <- ggplot(data=df, aes(x=TotalBsmtSF)) +
+        geom_density() + labs(x='Square feet basement')
+s6 <- ggplot(data=df[df$LotArea<100000,], aes(x=LotArea)) +
+        geom_density() + labs(x='Square feet lot')
+s7 <- ggplot(data=df, aes(x=LotFrontage)) +
+        geom_density() + labs(x='Linear feet lot frontage')
+
+layout <- matrix(c(1, 2, 3, 4, 5, 6, 7, 8), 4, 2, byrow=TRUE)
+multiplot(s1, s2, s3, s4, s5, s6, s7, layout=layout)
+```
+
+### Overall Quality, and other Quality variables
+
+We have already visualized the relation between Overall Quality and SalePrice in our initial explorations, but let's visualize the frequency distribution as well. As there are more quality measurements, we are taking the opportunity to bundle them in this section.
+
+```{r, warning=FALSE, message=FALSE, out.width="100%"}
+q1 <- ggplot(data=df, aes(x=as.factor(OverallQual))) +
+        geom_histogram(stat='count')
+q2 <- ggplot(data=df, aes(x=as.factor(KitchenQual))) +
+        geom_histogram(stat='count')
+q3 <- ggplot(data=df, aes(x=as.factor(GarageQual))) +
+        geom_histogram(stat='count')
+q4 <- ggplot(data=df, aes(x=as.factor(FireplaceQu))) +
+        geom_histogram(stat='count')
+
+layout <- matrix(c(1, 2, 3, 4), 2, 2, byrow=TRUE)
+multiplot(q1, q2, q3, q4, layout=layout)
+
+```
+
+Overall Quality is very important, and also more granular than the other variables. Kitchen Quality also seems one to keep, as all houses have a kitchen and there is a variance with some substance. Garage Quality does not seem to distinguish much, as the majority of garages have quality 3. Fireplace Quality is in the list of high correlations, and in the important variables list.
+
+# 6. Feature engineering
+
+## Total number of Bathrooms
+
+There are 4 bathroom variables. Individually, these variables are not very important. However, if we add them up into one predictor, this predictor is likely to become a strong one.
+
+"A half-bath, also known as a powder room or guest bath, has only two of the four main bathroom components-typically a toilet and sink." Consequently, I will also count the half bathrooms as half.
+
+```{r}
+df$TotBathrooms <- df$FullBath + (df$HalfBath*0.5)
+```
+
+As you can see in the first graph, there now seems to be a clear correlation (it's 0.63). The frequency distribution of Bathrooms in all data is shown in the second graph.
+
+```{r, warning=FALSE}
+tb1 <- ggplot(data=df[!is.na(df$SalePrice),], aes(x=as.factor(TotBathrooms), y=SalePrice))+
+        geom_point(col='blue') + geom_smooth(method = "lm", se=FALSE, color="black", aes(group=1)) +
+        scale_y_continuous(breaks= seq(0, 800000, by=100000), labels = comma)
+tb2 <- ggplot(data=df, aes(x=as.factor(TotBathrooms))) +
+        geom_histogram(stat='count')
+grid.arrange(tb1, tb2)
+```
+
+## Adding 'House Age', 'Remodeled (Yes/No)', and IsNew variables
+
+Altogether, there are 3 variables that are relevant with regards to the Age of a house; YearBlt, YearRemodAdd, and YearSold. YearRemodAdd defaults to YearBuilt if there has been no Remodeling/Addition. We will use YearRemodeled and YearSold to determine the Age. However, as parts of old constructions will always remain and only parts of the house might have been renovated, we will also introduce a Remodeled Yes/No variable. This should be seen as some sort of penalty parameter that indicates that if the Age is based on a remodeling date, it is probably worth less than houses that were built from scratch in that same year.
+
+```{r, message=FALSE, warning=FALSE}
+df$Remod <- ifelse(df$YearBuilt==df$YearRemodAdd, 0, 1) #0=No Remodeling, 1=Remodeling
+df$Age <- as.numeric(df$YrSold)-df$YearRemodAdd
+```
+
+```{r, message=FALSE, warning=FALSE}
+ggplot(data=df[!is.na(df$SalePrice),], aes(x=Age, y=SalePrice))+
+        geom_point(col='blue') + geom_smooth(method = "lm", se=FALSE, color="black", aes(group=1)) +
+        scale_y_continuous(breaks= seq(0, 800000, by=100000), labels = comma)
+```
+
+As expected, the graph shows a negative correlation with Age (old house are worth less).
+
+```{r, message=FALSE, warning=FALSE}
+cor(df$SalePrice[!is.na(df$SalePrice)], df$Age[!is.na(df$SalePrice)])
+```
+
+As you can see below, houses that are remodeled are worth less indeed, as expected.
+
+```{r, out.width="50%", message=FALSE, warning=FALSE}
+ggplot(df[!is.na(df$SalePrice),], aes(x=as.factor(Remod), y=SalePrice)) +
+        geom_bar(stat='summary', fun = "median", fill='blue') +
+        geom_label(stat = "count", aes(label = ..count.., y = ..count..), size=6) +
+        scale_y_continuous(breaks= seq(0, 800000, by=50000), labels = comma) +
+        theme_grey(base_size = 18) +
+        geom_hline(yintercept=163000, linetype="dashed") #dashed line is median SalePrice
+```
+
+# 7. Preparing data for modeling
+
+## Dropping highly correlated variables
+
+First of all, we are dropping a variable if two variables are highly correlated. To find these correlated pairs, we use the correlations matrix again. For instance: GarageCars and GarageArea have a correlation of 0.89. Of those two, we are dropping the variable with the lowest correlation with SalePrice (which is GarageArea with a SalePrice correlation of 0.62. GarageCars has a SalePrice correlation of 0.64).
+
+```{r}
+dropVars <- c('YearRemodAdd', 'GarageYrBlt', 'GarageArea', 'TotalBsmtSF', 'TotalRmsAbvGrd')
+
+df <- df[,!(names(df) %in% dropVars)]
+```
+
+## Removing outliers
+
+For the time being, we are keeping it simple and just remove the two really big houses with low SalePrice manually.
+
+```{r}
+df <- df[-c(524, 1299),]
+```
+
+## PreProcessing predictor variables
+
+Before modeling we need to center and scale the 'true numeric' predictors (so not variables that have been label encoded), and create dummy variables for the categorical predictors. Below, we are splitting the dataframe into one with all (true) numeric variables, and another dataframe holding the (ordinal) factors.
+
+```{r}
+numericVarNames <- numericVarNames[!(numericVarNames %in% c('MoSold', 'YrSold', 'SalePrice', 'OverallQual'))] 
+numericVarNames <- append(numericVarNames, c('Age', 'TotBathrooms'))
+
+DFnumeric <- df[, names(df) %in% numericVarNames]
+
+DFfactors <- df[, !(names(df) %in% numericVarNames)]
+DFfactors <- DFfactors[, names(DFfactors) != 'SalePrice']
+
+cat('There are', length(DFnumeric), 'numeric variables, and', length(DFfactors), 'factor variables')
+```
+
+### Skewness and normalizing of the numeric predictors
+
+**Skewness**
+
+Skewness is a measure of the symmetry in a distribution.  A symmetrical dataset will have a skewness equal to 0.  So, a normal distribution will have a skewness of 0. Skewness essentially measures the relative size of the two tails. As a rule of thumb, skewness should be between -1 and 1. In this range, data are considered fairly symmetrical. In order to fix the skewness, we are taking the log for all numeric predictors with an absolute skew greater than 0.8 (actually: log+1, to avoid division by zero issues).
+
+```{r}
+for(i in 1:ncol(DFnumeric)){
+        if (abs(skew(DFnumeric[,i]))>0.8){
+                DFnumeric[,i] <- log(DFnumeric[,i] +1)
+        }
+}
+```
+
+**Normalizing the data**
+
+```{r}
+PreNum <- preProcess(DFnumeric, method=c("center", "scale"))
+print(PreNum)
+```
+```{r}
+DFnorm <- predict(PreNum, DFnumeric)
+dim(DFnorm)
+```
+
+### One hot encoding the categorical variables
+
+The last step needed to ensure that all predictors are converted into numeric columns (which is required by most Machine Learning algorithms) is to 'one-hot encode' the categorical variables. This basically means that all (not ordinal) factor values are getting a seperate colums with 1s and 0s (1 basically means Yes/Present). To do this one-hot encoding, we are using the `model.matrix()` function.
+
+```{r}
+DFdummies <- as.data.frame(model.matrix(~.-1, DFfactors))
+dim(DFdummies)
+```
+
+Altogether, we have 54 variables. Let's drop the "id" column from the dataframe and add our outcome variable.
+
+```{r}
+combined <- cbind(DFnorm, DFdummies) #combining all (now numeric) predictors into one dataframe
+combined <- combined[, !(names(combined) %in% 'Id')] # drop "id" from our dataframe
+combined$SalePrice <- df$SalePrice # add SalePrice to our new dataframe
+```
+
+# 8. Modeling
+
+## Linear regression model
+
+Now that we have seen the linear relationship by computing the correlation and data exploration above, lets see the syntax for building the linear model. The function used for building linear models is **lm()**, which takes in two main arguments, namely: 1. Formula 2. Data. The data is typically a dataframe and the formula is a object of class formula. Here let's say we want to predict the SalePrice of a house based only on its age (Age), the convention is to write out the formula directly in place of the argument as written below.
+
+```{r, message=FALSE, warning=FALSE}
+set.seed(1000)
+linear_reg <- lm(data=combined, SalePrice ~ Age)
+summary(linear_reg) # print a summary of the linear regression model we just trained
+```
+
+Now that we have built the linear model, we also have established the relationship between the predictors and outcome in the form of a mathematical formula for SalePrice as a function of Age. For the above output, you can notice the "Coefficients" part having two components: Intercept: 180933, Age: -40519. In other words:
+
+**SalePrice** = *180933* + (*-40519*)**Age**
+
+These coefficients make sense because the more age a house has, the lower its price is. Because the actual information in a data is the total variation it contains. From the output above, what R-Squared tells us is the proportion of variation in the outcome variable (SalePrice) that has been explained by this model. Here, our R-squared is 0.2598, which means that this model is able to explain approximately 26% of total variance in SalePrice, which is pretty good considering we only used 1 variable. Let's create another model that uses more variables.
+
+```{r, message=FALSE, warning=FALSE}
+linear_reg_all <- lm(data=combined, SalePrice ~ Age + OverallQual + LotArea + GarageCars + TotBathrooms) 
+summary(linear_reg_all) 
+```
+
+Just by adding 4 more variables to our model gets us an R-squared of 0.743, which is better than the previous model with only 1 variable. This model with only 5 variables out of a total of 54 variables we created earlier is able to explain approximately 75% of total variance in SalePrice, and our new linear regression becomes:
+
+**SalePrice** = *-10280* + (*-6320*)**Age** + (*31377*)**OverallQual** + (*18788*)**LotArea** + (*12008*)**GarageCars** + (*10688*)**TotBathrooms**
+
+
+
+
+
+
+
